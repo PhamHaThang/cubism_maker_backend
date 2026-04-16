@@ -31,7 +31,12 @@ app.use(
 );
 
 app.use(express.json({ limit: "10mb" }));
-
+app.get("/", (_req, res) => {
+    res.json({
+        status: "API is running...",
+        timestamp: new Date().toISOString(),
+    });
+});
 app.use("/api/auth", authRoutes);
 app.use("/api/levels", levelRoutes);
 app.use("/api/favorites", favoriteRoutes);

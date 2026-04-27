@@ -186,7 +186,10 @@ export const createLevel = async (
                 puzzleFormatVersion: 1,
                 created,
                 miniatureType: meta.miniatureType ?? 0,
-                timeLimitSeconds: Math.max(0, Number(meta.timeLimitSeconds ?? 0)),
+                timeLimitSeconds: Math.max(
+                    0,
+                    Number(meta.timeLimitSeconds ?? 0),
+                ),
             },
             grid,
             pieces,
@@ -220,7 +223,10 @@ export const updateLevel = async (
         }
 
         const { meta, grid, pieces, thumbnailData } = req.body;
-        if (meta && Object.prototype.hasOwnProperty.call(meta, "timeLimitSeconds")) {
+        if (
+            meta &&
+            Object.prototype.hasOwnProperty.call(meta, "timeLimitSeconds")
+        ) {
             const parsedTimeSeconds = Number(meta.timeLimitSeconds);
             if (
                 Number.isNaN(parsedTimeSeconds) ||
@@ -228,7 +234,8 @@ export const updateLevel = async (
                 !Number.isFinite(parsedTimeSeconds)
             ) {
                 res.status(400).json({
-                    message: "meta.timeLimitSeconds must be a non-negative number",
+                    message:
+                        "meta.timeLimitSeconds must be a non-negative number",
                 });
                 return;
             }

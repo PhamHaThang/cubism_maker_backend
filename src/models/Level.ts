@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 export interface ILevel extends Document {
+    status: "public" | "private";
     code: string;
     meta: {
         name: string;
@@ -26,6 +27,11 @@ export interface ILevel extends Document {
 
 const levelSchema = new Schema<ILevel>(
     {
+        status: {
+            type: String,
+            enum: ["public", "private"],
+            default: "public",
+        },
         code: {
             type: String,
             required: true,

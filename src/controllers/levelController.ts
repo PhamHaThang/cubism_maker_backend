@@ -27,6 +27,18 @@ const getCodeParam = (req: Request): string => {
     return String(code || "").toUpperCase();
 };
 
+const parseLevelStatus = (value: unknown): "public" | "private" | null => {
+    if (value === undefined || value === null || value === "") {
+        return "public";
+    }
+    if (value === "public" || value === "private") {
+        return value;
+    }
+    // Backward compatibility for old payloads.
+    if (value === "publish") return "public";
+    return null;
+};
+
 export const getLevels = async (req: Request, res: Response): Promise<void> => {
     try {
         const {
@@ -39,7 +51,9 @@ export const getLevels = async (req: Request, res: Response): Promise<void> => {
         const pageNum = Number(page);
         const limitNum = Number(limit);
 
-        const filter: Record<string, unknown> = {};
+        const filter: Record<string, unknown> = {
+            status: { $in: ["public"] },
+        };
         if (difficulty && difficulty !== "all")
             filter["meta.difficulty"] = difficulty;
         if (search) filter["meta.name"] = { $regex: search, $options: "i" };
@@ -74,6 +88,45 @@ export const getLevels = async (req: Request, res: Response): Promise<void> => {
     }
 };
 
+export const getMainMenuLevels = async (
+    req: Request,
+    res: Response,
+): Promise<void> => {
+    try {
+        const { page = 1, limit = 9 } = req.query;
+        const pageNum = Math.max(1, Number(page) || 1);
+        const limitNum = Math.min(200, Math.max(1, Number(limit) || 9));
+
+        const filter = {
+            "meta.name": { $regex: "^Main Menu", $options: "i" },
+            status: { $in: ["public", "private"] },
+        };
+
+        const [levels, total] = await Promise.all([
+            Level.find(filter)
+                .sort({ publishedAt: -1 })
+                .skip((pageNum - 1) * limitNum)
+                .limit(limitNum)
+                .populate("author", "username")
+                .lean(),
+            Level.countDocuments(filter),
+        ]);
+
+        res.json({
+            levels,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                pages: Math.ceil(total / limitNum),
+            },
+        });
+    } catch (error) {
+        console.error("GetMainMenuLevels error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
 export const getLevelByCode = async (
     req: Request,
     res: Response,
@@ -104,7 +157,15 @@ export const createLevel = async (
         let meta = req.body.meta;
         let grid = req.body.grid;
         let pieces = req.body.pieces;
+        const status = parseLevelStatus(req.body.status);
         const thumbnailData = req.body.thumbnailData;
+
+        if (!status) {
+            res.status(400).json({
+                message: "status must be either public or private",
+            });
+            return;
+        }
 
         // Simplified payload from browser editor
         if (!meta && req.body.name) {
@@ -179,6 +240,7 @@ export const createLevel = async (
         });
 
         const level = await Level.create({
+            status,
             code,
             meta: {
                 ...meta,
@@ -223,6 +285,17 @@ export const updateLevel = async (
         }
 
         const { meta, grid, pieces, thumbnailData } = req.body;
+        const nextStatus =
+            req.body.status === undefined
+                ? undefined
+                : parseLevelStatus(req.body.status);
+
+        if (nextStatus === null) {
+            res.status(400).json({
+                message: "status must be either public or private",
+            });
+            return;
+        }
         if (
             meta &&
             Object.prototype.hasOwnProperty.call(meta, "timeLimitSeconds")
@@ -246,9 +319,20 @@ export const updateLevel = async (
         if (grid) level.grid = grid;
         if (pieces) level.pieces = pieces;
         if (thumbnailData) level.thumbnailData = thumbnailData;
+        // Normalize old persisted value before save.
+        if (level.status !== "private") {
+            level.status = "public";
+        }
+        if (nextStatus) level.status = nextStatus;
 
         await level.save();
-        res.json({ level });
+
+        // Populate author for response
+        const populatedLevel = await Level.findOne({
+            code: getCodeParam(req),
+        }).populate("author", "username");
+
+        res.json({ level: populatedLevel });
     } catch (error) {
         console.error("UpdateLevel error:", error);
         res.status(500).json({ message: "Server error" });
@@ -287,12 +371,61 @@ export const getUserLevels = async (
     res: Response,
 ): Promise<void> => {
     try {
-        const levels = await Level.find({ author: req.params.userId })
-            .sort({ publishedAt: -1 })
-            .populate("author", "username")
-            .lean();
+        const {
+            page = 1,
+            limit = 12,
+            difficulty,
+            search,
+            status,
+            sort = "newest",
+        } = req.query;
+        const pageNum = Number(page);
+        const limitNum = Number(limit);
 
-        res.json({ levels });
+        const filter: Record<string, unknown> = { author: req.params.userId };
+        if (difficulty && difficulty !== "all") {
+            filter["meta.difficulty"] = difficulty;
+        }
+        if (search) {
+            filter["meta.name"] = { $regex: search, $options: "i" };
+        }
+        if (status && status !== "all") {
+            const parsedStatus = parseLevelStatus(status);
+            if (!parsedStatus) {
+                res.status(400).json({
+                    message: "status must be either public or private",
+                });
+                return;
+            }
+            filter.status =
+                parsedStatus === "public"
+                    ? { $in: ["public", "publish"] }
+                    : "private";
+        }
+
+        let sortObj: Record<string, 1 | -1> = { publishedAt: -1 };
+        if (sort === "oldest") sortObj = { publishedAt: 1 };
+        if (sort === "name") sortObj = { "meta.name": 1 };
+
+        const [levels, total] = await Promise.all([
+            Level.find(filter)
+                .sort(sortObj)
+                .skip((pageNum - 1) * limitNum)
+                .limit(limitNum)
+                .populate("author", "username")
+                .lean(),
+            Level.countDocuments(filter),
+        ]);
+
+        res.json({
+            levels,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                pages: Math.ceil(total / limitNum),
+            },
+        });
     } catch (error) {
         console.error("GetUserLevels error:", error);
         res.status(500).json({ message: "Server error" });

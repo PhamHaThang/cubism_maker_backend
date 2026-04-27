@@ -112,6 +112,7 @@ export const createLevel = async (
                 name,
                 description,
                 difficulty = "medium",
+                timeSeconds = 0,
                 blueprint,
             } = req.body;
             if (!blueprint?.grid || !blueprint?.pieces) {
@@ -120,12 +121,26 @@ export const createLevel = async (
                 });
                 return;
             }
+
+            const parsedTimeSeconds = Number(timeSeconds);
+            if (
+                Number.isNaN(parsedTimeSeconds) ||
+                parsedTimeSeconds < 0 ||
+                !Number.isFinite(parsedTimeSeconds)
+            ) {
+                res.status(400).json({
+                    message: "timeSeconds must be a non-negative number",
+                });
+                return;
+            }
+
             grid = blueprint.grid;
             pieces = blueprint.pieces;
             meta = {
                 name,
                 description: description || "",
                 difficulty,
+                timeLimitSeconds: Math.floor(parsedTimeSeconds),
                 author: (req as any).username || "Anonymous",
                 angle: 180,
                 miniatureType: 0,
@@ -171,6 +186,7 @@ export const createLevel = async (
                 puzzleFormatVersion: 1,
                 created,
                 miniatureType: meta.miniatureType ?? 0,
+                timeLimitSeconds: Math.max(0, Number(meta.timeLimitSeconds ?? 0)),
             },
             grid,
             pieces,
@@ -204,6 +220,21 @@ export const updateLevel = async (
         }
 
         const { meta, grid, pieces, thumbnailData } = req.body;
+        if (meta && Object.prototype.hasOwnProperty.call(meta, "timeLimitSeconds")) {
+            const parsedTimeSeconds = Number(meta.timeLimitSeconds);
+            if (
+                Number.isNaN(parsedTimeSeconds) ||
+                parsedTimeSeconds < 0 ||
+                !Number.isFinite(parsedTimeSeconds)
+            ) {
+                res.status(400).json({
+                    message: "meta.timeLimitSeconds must be a non-negative number",
+                });
+                return;
+            }
+            meta.timeLimitSeconds = Math.floor(parsedTimeSeconds);
+        }
+
         if (meta) Object.assign(level.meta, meta);
         if (grid) level.grid = grid;
         if (pieces) level.pieces = pieces;

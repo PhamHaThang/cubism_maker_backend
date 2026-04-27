@@ -6,6 +6,7 @@ export interface ILevel extends Document {
     name: string;
     id: string;
     difficulty: string;
+    timeLimitSeconds?: number;
     puzzleFormatVersion: number;
     angle: number;
     created: string;
@@ -39,6 +40,7 @@ const levelSchema = new Schema<ILevel>(
         required: true,
         enum: ['easy', 'medium', 'hard', 'expert'],
       },
+      timeLimitSeconds: { type: Number, default: 0, min: 0 },
       puzzleFormatVersion: { type: Number, default: 1 },
       angle: { type: Number, default: 180 },
       created: { type: String, required: true },

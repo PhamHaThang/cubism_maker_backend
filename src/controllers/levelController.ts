@@ -230,14 +230,8 @@ export const createLevel = async (
         }
 
         const now = new Date();
-        const created = now.toLocaleString("en-US", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-        });
+        // ISO 8601 UTC — parseable by UE5 FDateTime::ParseIso8601 and all platforms
+        const created = now.toISOString();
 
         const level = await Level.create({
             status,
@@ -437,9 +431,16 @@ export const downloadLevel = async (
     res: Response,
 ): Promise<void> => {
     try {
+        // ?source=app → UE5 app sync: don't inflate download counter
+        const isAppSync = req.query.source === "app";
+
+        const updateOp = isAppSync
+            ? {} // App sync: don't increment counter
+            : { $inc: { downloads: 1 } };
+
         const level = await Level.findOneAndUpdate(
             { code: getCodeParam(req) },
-            { $inc: { downloads: 1 } },
+            updateOp,
             { new: true },
         );
 
@@ -454,14 +455,89 @@ export const downloadLevel = async (
             pieces: level.pieces,
         };
 
-        res.setHeader("Content-Type", "application/json");
+        // ETag based on updatedAt for conditional requests
+        const etag = `"${level.updatedAt.getTime()}"`;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.setHeader(
             "Content-Disposition",
             `attachment; filename="${level.meta.name}.cube"`,
         );
+        res.setHeader("ETag", etag);
+        res.setHeader("Cache-Control", "public, max-age=300"); // CDN cache 5 min
+        res.setHeader("Access-Control-Expose-Headers", "ETag");
+
+        // Support conditional request from app (If-None-Match)
+        if (req.headers["if-none-match"] === etag) {
+            res.status(304).end();
+            return;
+        }
+
         res.json(cubismData);
     } catch (error) {
         console.error("DownloadLevel error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * GET /api/levels/manifest
+ *
+ * Returns manifest for UE5 app sync.
+ * Contains only metadata + URL — NO grid/pieces (lightweight for app diff).
+ * App will call /api/levels/vr/download/:code to fetch full level content.
+ */
+export const getManifest = async (
+    req: Request,
+    res: Response,
+): Promise<void> => {
+    try {
+        // Only fetch needed fields — don't pull grid/pieces (can be MBs)
+        const levels = await Level.find(
+            { status: "public" },
+            {
+                code: 1,
+                "meta.id": 1,
+                "meta.name": 1,
+                "meta.difficulty": 1,
+                "meta.author": 1,
+                "meta.timeLimitSeconds": 1,
+                "meta.puzzleFormatVersion": 1,
+                updatedAt: 1,
+                publishedAt: 1,
+            },
+        )
+            .sort({ publishedAt: -1 })
+            .lean();
+
+        // Build base URL from request — works both localhost and production
+        const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        const baseUrl = `${protocol}://${host}`;
+
+        const manifest = {
+            manifestVersion: 1, // schema version of the manifest structure itself
+            generatedAt: new Date().toISOString(),
+            levels: levels.map((lvl: any) => ({
+                code: lvl.code,
+                id: lvl.meta.id,
+                name: lvl.meta.name,
+                difficulty: lvl.meta.difficulty,
+                author: lvl.meta.author,
+                timeLimitSeconds: lvl.meta.timeLimitSeconds ?? 0,
+                puzzleFormatVersion: lvl.meta.puzzleFormatVersion ?? 1,
+                // updatedAt = "version" of the level. App diffs by this field.
+                updatedAt: lvl.updatedAt.toISOString(),
+                publishedAt: lvl.publishedAt?.toISOString() ?? lvl.updatedAt.toISOString(),
+                downloadUrl: `${baseUrl}/api/levels/vr/download/${lvl.code}`,
+            })),
+        };
+
+        // Manifest should NOT be cached — app needs the latest version every fetch
+        res.setHeader("Cache-Control", "no-cache, must-revalidate");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.json(manifest);
+    } catch (error) {
+        console.error("GetManifest error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };

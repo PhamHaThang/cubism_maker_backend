@@ -8,11 +8,14 @@ import {
     deleteLevel,
     getUserLevels,
     downloadLevel,
+    getManifest,
 } from "../controllers/levelController.js";
 import { auth } from "../middleware/auth.js";
 
 const router = Router();
 
+// Static routes first — before any dynamic /:param routes
+router.get("/manifest", getManifest);
 router.get("/", getLevels);
 router.get("/main-menu", getMainMenuLevels);
 router.get("/code/:code", getLevelByCode);

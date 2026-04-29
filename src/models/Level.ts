@@ -3,6 +3,7 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 export interface ILevel extends Document {
     status: "public" | "private";
     code: string;
+    isMainMenu: boolean;
     meta: {
         name: string;
         id: string;
@@ -37,6 +38,10 @@ const levelSchema = new Schema<ILevel>(
             required: true,
             unique: true,
             uppercase: true,
+        },
+        isMainMenu: {
+            type: Boolean,
+            default: false,
         },
         meta: {
             name: { type: String, required: true },
@@ -78,5 +83,6 @@ levelSchema.index({ "meta.name": "text" });
 levelSchema.index({ author: 1 });
 levelSchema.index({ downloads: -1 });
 levelSchema.index({ publishedAt: -1 });
+levelSchema.index({ isMainMenu: 1 });
 
 export const Level = mongoose.model<ILevel>("Level", levelSchema);

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { Level } from "../models/Level.js";
 import { Favorite } from "../models/Favorite.js";
+import { User } from "../models/User.js";
 import { AuthRequest } from "../middleware/auth.js";
 
 const generateCode = (): string => {
@@ -98,7 +99,7 @@ export const getMainMenuLevels = async (
         const limitNum = Math.min(200, Math.max(1, Number(limit) || 9));
 
         const filter = {
-            "meta.name": { $regex: "^Main Menu", $options: "i" },
+            isMainMenu: true,
             status: { $in: ["public", "private"] },
         };
 
@@ -165,6 +166,14 @@ export const createLevel = async (
                 message: "status must be either public or private",
             });
             return;
+        }
+
+        let isMainMenu = false;
+        if (req.body.isMainMenu !== undefined) {
+            const user = await User.findById(req.userId);
+            if (user?.isAdmin) {
+                isMainMenu = Boolean(req.body.isMainMenu);
+            }
         }
 
         // Simplified payload from browser editor
@@ -236,6 +245,7 @@ export const createLevel = async (
         const level = await Level.create({
             status,
             code,
+            isMainMenu,
             meta: {
                 ...meta,
                 id: generateId(),
@@ -290,6 +300,14 @@ export const updateLevel = async (
             });
             return;
         }
+
+        if (req.body.isMainMenu !== undefined) {
+            const user = await User.findById(req.userId);
+            if (user?.isAdmin) {
+                level.isMainMenu = Boolean(req.body.isMainMenu);
+            }
+        }
+
         if (
             meta &&
             Object.prototype.hasOwnProperty.call(meta, "timeLimitSeconds")
@@ -372,6 +390,7 @@ export const getUserLevels = async (
             search,
             status,
             sort = "newest",
+            isMainMenu,
         } = req.query;
         const pageNum = Number(page);
         const limitNum = Number(limit);
@@ -384,7 +403,7 @@ export const getUserLevels = async (
             filter["meta.name"] = { $regex: search, $options: "i" };
         }
         if (status && status !== "all") {
-            const parsedStatus = parseLevelStatus(status);
+            const parsedStatus = parseLevelStatus(status as string);
             if (!parsedStatus) {
                 res.status(400).json({
                     message: "status must be either public or private",
@@ -395,6 +414,9 @@ export const getUserLevels = async (
                 parsedStatus === "public"
                     ? { $in: ["public", "publish"] }
                     : "private";
+        }
+        if (isMainMenu !== undefined && isMainMenu !== "all") {
+            filter.isMainMenu = isMainMenu === "true";
         }
 
         let sortObj: Record<string, 1 | -1> = { publishedAt: -1 };
@@ -479,21 +501,21 @@ export const downloadLevel = async (
     }
 };
 
-/**
- * GET /api/levels/manifest
- *
- * Returns manifest for UE5 app sync.
- * Contains only metadata + URL — NO grid/pieces (lightweight for app diff).
- * App will call /api/levels/vr/download/:code to fetch full level content.
- */
-export const getManifest = async (
+const buildManifestResponse = async (
     req: Request,
     res: Response,
-): Promise<void> => {
+    isMainMenu: boolean,
+) => {
     try {
-        // Only fetch needed fields — don't pull grid/pieces (can be MBs)
+        const query: any = { status: "public" };
+        if (isMainMenu) {
+            query.isMainMenu = true;
+        } else {
+            query.isMainMenu = { $ne: true };
+        }
+
         const levels = await Level.find(
-            { status: "public" },
+            query,
             {
                 code: 1,
                 "meta.id": 1,
@@ -540,4 +562,26 @@ export const getManifest = async (
         console.error("GetManifest error:", error);
         res.status(500).json({ message: "Server error" });
     }
+};
+
+/**
+ * GET /api/levels/manifest/custom-level
+ * Returns manifest of custom levels for UE5 app sync.
+ */
+export const getCustomLevelManifest = async (
+    req: Request,
+    res: Response,
+): Promise<void> => {
+    await buildManifestResponse(req, res, false);
+};
+
+/**
+ * GET /api/levels/manifest/main-menu
+ * Returns manifest of main menu levels for UE5 app sync.
+ */
+export const getMainMenuManifest = async (
+    req: Request,
+    res: Response,
+): Promise<void> => {
+    await buildManifestResponse(req, res, true);
 };

@@ -4,14 +4,7 @@ import { Favorite } from "../models/Favorite.js";
 import { User } from "../models/User.js";
 import { AuthRequest } from "../middleware/auth.js";
 
-const generateCode = (): string => {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-};
+
 
 const generateId = (): string => {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -238,13 +231,27 @@ export const createLevel = async (
       return;
     }
 
-    // Generate unique code
-    let code = generateCode();
+    // Generate unique sequential code
+    const prefix = isMainMenu ? "LVL" : "CUS";
+    const latestLevel = await Level.findOne({ code: { $regex: `^${prefix}\\d+$` } })
+      .sort({ createdAt: -1 });
+
+    let nextNum = 1;
+    if (latestLevel && latestLevel.code) {
+      const numStr = latestLevel.code.substring(3);
+      const num = parseInt(numStr, 10);
+      if (!isNaN(num)) {
+        nextNum = num + 1;
+      }
+    }
+
+    let code = `${prefix}${String(nextNum).padStart(3, "0")}`;
     let attempts = 0;
     while (await Level.findOne({ code })) {
-      code = generateCode();
+      nextNum++;
+      code = `${prefix}${String(nextNum).padStart(3, "0")}`;
       attempts++;
-      if (attempts > 100) {
+      if (attempts > 1000) {
         res.status(500).json({
           message: "Failed to generate unique code",
         });
@@ -572,6 +579,7 @@ const buildManifestResponse = async (
         author: lvl.meta.author,
         timeLimitSeconds: lvl.meta.timeLimitSeconds ?? 0,
         puzzleFormatVersion: lvl.meta.puzzleFormatVersion ?? 1,
+        order: lvl.order ?? 0,
         // updatedAt = "version" of the level. App diffs by this field.
         updatedAt: lvl.updatedAt.toISOString(),
         publishedAt:

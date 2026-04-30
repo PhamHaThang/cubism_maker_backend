@@ -4,6 +4,7 @@ export interface ILevel extends Document {
     status: "public" | "private";
     code: string;
     isMainMenu: boolean;
+    order?: number;
     meta: {
         name: string;
         id: string;
@@ -42,6 +43,9 @@ const levelSchema = new Schema<ILevel>(
         isMainMenu: {
             type: Boolean,
             default: false,
+        },
+        order: {
+            type: Number,
         },
         meta: {
             name: { type: String, required: true },

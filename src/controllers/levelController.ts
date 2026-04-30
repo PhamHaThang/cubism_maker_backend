@@ -179,10 +179,14 @@ export const createLevel = async (
     }
 
     let isMainMenu = false;
+    let order: number | undefined = undefined;
     if (req.body.isMainMenu !== undefined) {
       const user = await User.findById(req.userId);
       if (user?.isAdmin) {
         isMainMenu = Boolean(req.body.isMainMenu);
+        if (isMainMenu && req.body.order !== undefined) {
+          order = Number(req.body.order);
+        }
       }
     }
 
@@ -252,7 +256,7 @@ export const createLevel = async (
     // ISO 8601 UTC — parseable by UE5 FDateTime::ParseIso8601 and all platforms
     const created = now.toISOString();
 
-    const level = await Level.create({
+    const levelData: any = {
       status,
       code,
       isMainMenu,
@@ -268,7 +272,12 @@ export const createLevel = async (
       pieces,
       author: req.userId,
       thumbnailData,
-    });
+    };
+    if (order !== undefined) {
+      levelData.order = order;
+    }
+
+    const level = await Level.create(levelData);
 
     await level.populate("author", "username");
     res.status(201).json({ level, code });
@@ -308,10 +317,17 @@ export const updateLevel = async (
       return;
     }
 
-    if (req.body.isMainMenu !== undefined) {
+    if (req.body.isMainMenu !== undefined || req.body.order !== undefined) {
       const user = await User.findById(req.userId);
       if (user?.isAdmin) {
-        level.isMainMenu = Boolean(req.body.isMainMenu);
+        if (req.body.isMainMenu !== undefined) {
+          level.isMainMenu = Boolean(req.body.isMainMenu);
+        }
+        if (level.isMainMenu && req.body.order !== undefined) {
+          level.order = Number(req.body.order);
+        } else if (!level.isMainMenu) {
+          level.order = undefined; // Clear order if no longer main menu
+        }
       }
     }
 
@@ -521,6 +537,10 @@ const buildManifestResponse = async (
       query.isMainMenu = { $ne: true };
     }
 
+    const sortOption: any = isMainMenu
+      ? { order: 1, publishedAt: 1 }
+      : { publishedAt: 1 };
+
     const levels = await Level.find(query, {
       code: 1,
       "meta.id": 1,
@@ -529,10 +549,11 @@ const buildManifestResponse = async (
       "meta.author": 1,
       "meta.timeLimitSeconds": 1,
       "meta.puzzleFormatVersion": 1,
+      order: 1,
       updatedAt: 1,
       publishedAt: 1,
     })
-      .sort({ publishedAt: 1 })
+      .sort(sortOption)
       .lean();
 
     // Build base URL from request — works both localhost and production

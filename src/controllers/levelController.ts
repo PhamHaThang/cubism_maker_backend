@@ -54,6 +54,7 @@ export const getLevels = async (req: Request, res: Response): Promise<void> => {
 
         const filter: Record<string, unknown> = {
             status: { $in: ["public"] },
+            isMainMenu: { $ne: true },
         };
         if (difficulty && difficulty !== "all")
             filter["meta.difficulty"] = difficulty;

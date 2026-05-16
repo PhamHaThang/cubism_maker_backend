@@ -2,6 +2,7 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 
 export interface ILevel extends Document {
     status: "public" | "private";
+    reviewStatus?: "pending" | "approved" | "rejected";
     code: string;
     isMainMenu: boolean;
     order?: number;
@@ -23,6 +24,8 @@ export interface ILevel extends Document {
     downloads: number;
     favorites: number;
     publishedAt: Date;
+    reviewedAt?: Date;
+    reviewedBy?: Types.ObjectId;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -33,6 +36,11 @@ const levelSchema = new Schema<ILevel>(
             type: String,
             enum: ["public", "private"],
             default: "public",
+        },
+        reviewStatus: {
+            type: String,
+            enum: ["pending", "approved", "rejected"],
+            default: "pending",
         },
         code: {
             type: String,
@@ -78,6 +86,8 @@ const levelSchema = new Schema<ILevel>(
         downloads: { type: Number, default: 0 },
         favorites: { type: Number, default: 0 },
         publishedAt: { type: Date, default: Date.now },
+        reviewedAt: { type: Date },
+        reviewedBy: { type: Schema.Types.ObjectId, ref: "User" },
     },
     { timestamps: true },
 );
@@ -88,5 +98,6 @@ levelSchema.index({ author: 1 });
 levelSchema.index({ downloads: -1 });
 levelSchema.index({ publishedAt: -1 });
 levelSchema.index({ isMainMenu: 1 });
+levelSchema.index({ reviewStatus: 1 });
 
 export const Level = mongoose.model<ILevel>("Level", levelSchema);

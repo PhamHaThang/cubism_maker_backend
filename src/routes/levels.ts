@@ -11,7 +11,7 @@ import {
     getCustomLevelManifest,
     getMainMenuManifest,
 } from "../controllers/levelController.js";
-import { auth } from "../middleware/auth.js";
+import { auth, optionalAuth } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -20,9 +20,9 @@ router.get("/manifest/custom-level", getCustomLevelManifest);
 router.get("/manifest/main-menu", getMainMenuManifest);
 router.get("/", getLevels);
 router.get("/main-menu", getMainMenuLevels);
-router.get("/code/:code", getLevelByCode);
-router.get("/user/:userId", getUserLevels);
-router.get("/vr/download/:code", downloadLevel);
+router.get("/code/:code", optionalAuth, getLevelByCode);
+router.get("/user/:userId", optionalAuth, getUserLevels);
+router.get("/vr/download/:code", optionalAuth, downloadLevel);
 router.post("/", auth, createLevel);
 router.put("/:code", auth, updateLevel);
 router.delete("/:code", auth, deleteLevel);

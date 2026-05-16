@@ -6,6 +6,7 @@ export interface IUser extends Document {
   passwordHash: string;
   avatar?: string;
   isAdmin?: boolean;
+  isBanned?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +36,10 @@ const userSchema = new Schema<IUser>(
       type: String,
     },
     isAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    isBanned: {
       type: Boolean,
       default: false,
     },

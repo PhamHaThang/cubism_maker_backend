@@ -3,6 +3,7 @@ import cors from "cors";
 import authRoutes from "./routes/auth.js";
 import levelRoutes from "./routes/levels.js";
 import favoriteRoutes from "./routes/favorites.js";
+import adminRoutes from "./routes/admin.js";
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.get("/", (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/levels", levelRoutes);
 app.use("/api/favorites", favoriteRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
